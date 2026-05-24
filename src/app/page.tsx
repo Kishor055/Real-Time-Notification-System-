@@ -18,7 +18,8 @@ import {
   Loader2,
   Lock,
   ChevronRight,
-  UserCircle
+  UserCircle,
+  Power
 } from 'lucide-react';
 import { 
   Sidebar, 
@@ -36,7 +37,6 @@ import {
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { SmartDispatcher } from '@/components/dashboard/smart-dispatcher';
 import { LiveStream } from '@/components/dashboard/live-stream';
 import { HealthMetrics } from '@/components/dashboard/health-metrics';
@@ -47,7 +47,6 @@ import { doc, setDoc } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast';
 import { errorEmitter } from '@/firebase/error-emitter';
 import { FirestorePermissionError } from '@/firebase/errors';
-import { validateOperator, type Operator } from '@/lib/operator-db';
 
 export default function NovaPulseDashboard() {
   const { user, loading: authLoading } = useUser();
@@ -55,7 +54,6 @@ export default function NovaPulseDashboard() {
   const db = useFirestore();
   const [activeTab, setActiveTab] = useState('overview');
   const [latency, setLatency] = useState(4);
-  const [localOperator, setLocalOperator] = useState<Operator | null>(null);
 
   // Real-time Active User Tracking
   const { data: userPresenceDocs } = useCollection<any>('users');
@@ -63,17 +61,17 @@ export default function NovaPulseDashboard() {
 
   // Presence Tracking
   useEffect(() => {
-    if (!user || !db || !localOperator) return;
+    if (!user || !db) return;
 
     const userRef = doc(db, 'users', user.uid);
     const updatePresence = (status: 'online' | 'offline' | 'away') => {
       const presenceData = {
-        email: `${localOperator.id.toLowerCase()}@novapulse.io`,
-        displayName: localOperator.name,
+        email: `guest-${user.uid.slice(0, 5)}@novapulse.io`,
+        displayName: user.isAnonymous ? `Guest Operator ${user.uid.slice(0, 4)}` : 'Admin User',
         status: status,
         lastActive: new Date().toISOString(),
-        role: localOperator.role,
-        clearance: localOperator.clearance
+        role: 'operator',
+        isGuest: true
       };
 
       setDoc(userRef, presenceData, { merge: true })
@@ -97,7 +95,7 @@ export default function NovaPulseDashboard() {
       window.removeEventListener('visibilitychange', handleVisibilityChange);
       updatePresence('offline');
     };
-  }, [user, db, localOperator]);
+  }, [user, db]);
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -108,7 +106,7 @@ export default function NovaPulseDashboard() {
 
   if (authLoading) return <div className="h-screen w-full flex items-center justify-center bg-[#0f101a]"><LoaderPulse /></div>;
 
-  if (!user || !localOperator) return <AuthScreen onLogin={setLocalOperator} />;
+  if (!user) return <AuthScreen />;
 
   return (
     <div className="flex h-screen w-full bg-[#0f101a] text-foreground">
@@ -177,14 +175,11 @@ export default function NovaPulseDashboard() {
                 <UserCircle className="size-4 text-muted-foreground" />
               </div>
               <div className="flex flex-col">
-                <span className="text-[10px] font-bold truncate max-w-[100px]">{localOperator.name}</span>
-                <span className="text-[9px] text-primary">{localOperator.clearance}</span>
+                <span className="text-[10px] font-bold truncate max-w-[100px]">Guest Operator</span>
+                <span className="text-[9px] text-primary">Level 1 Clearance</span>
               </div>
             </div>
-            <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-destructive" onClick={() => {
-              signOut(auth);
-              setLocalOperator(null);
-            }}>
+            <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-destructive" onClick={() => signOut(auth)}>
               <LogOut className="size-4" />
             </Button>
           </div>
@@ -265,41 +260,24 @@ function LoaderPulse() {
   );
 }
 
-function AuthScreen({ onLogin }: { onLogin: (op: Operator) => void }) {
-  const [operatorId, setOperatorId] = useState('');
+function AuthScreen() {
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const auth = useAuth();
   const { toast } = useToast();
 
   const handleEnterPlatform = async () => {
-    if (!operatorId.trim()) return;
-    
     setIsLoggingIn(true);
-    const operator = validateOperator(operatorId);
-
-    if (!operator) {
-      toast({ 
-        variant: "destructive", 
-        title: "Access Denied", 
-        description: "Invalid Operator ID. Check internal registry." 
-      });
-      setIsLoggingIn(false);
-      return;
-    }
-
     try {
-      // Connect to Firebase silently to enable real-time features
       await signInAnonymously(auth);
-      onLogin(operator);
       toast({ 
         title: "Protocol Handshake Complete", 
-        description: `Welcome, Operator ${operator.name}.` 
+        description: "Welcome to the NovaPulse Backbone." 
       });
     } catch (err: any) {
       toast({ 
         variant: "destructive", 
         title: "Backbone Error", 
-        description: "Failed to connect to real-time cluster. Check API configuration." 
+        description: err.message || "Check API configuration." 
       });
     } finally {
       setIsLoggingIn(false);
@@ -320,37 +298,29 @@ function AuthScreen({ onLogin }: { onLogin: (op: Operator) => void }) {
             NovaPulse Command
           </CardTitle>
           <CardDescription className="text-muted-foreground/80">
-            Enter Operator ID to verify credentials.
+            Enterprise Real-Time Notification Backbone
           </CardDescription>
         </CardHeader>
         
         <CardContent className="space-y-6">
-          <div className="space-y-2">
-            <label className="text-[10px] text-muted-foreground uppercase tracking-widest font-bold">Operator ID</label>
-            <Input 
-              placeholder="e.g. ROOT-01" 
-              className="bg-white/5 border-white/10 h-12 font-code tracking-widest text-center"
-              value={operatorId}
-              onChange={(e) => setOperatorId(e.target.value.toUpperCase())}
-              onKeyDown={(e) => e.key === 'Enter' && handleEnterPlatform()}
-            />
-            <p className="text-[9px] text-muted-foreground/60 italic text-center">
-              Internal Registry: ROOT-01, NAV-02, GUEST-99
+          <div className="p-4 rounded-lg bg-white/5 border border-white/10 text-center space-y-2">
+            <p className="text-xs text-muted-foreground">
+              Session initialization will establish an ephemeral link to the regional notification cluster.
             </p>
           </div>
 
           <Button 
-            className="w-full h-12 font-headline font-bold" 
+            className="w-full h-14 font-headline font-bold text-lg" 
             onClick={handleEnterPlatform}
-            disabled={isLoggingIn || !operatorId}
+            disabled={isLoggingIn}
           >
             {isLoggingIn ? (
-              <Loader2 className="size-5 animate-spin" />
+              <Loader2 className="size-6 animate-spin" />
             ) : (
-              <div className="flex items-center gap-2">
-                <Lock className="size-4" />
-                Validate Credentials
-                <ChevronRight className="size-4" />
+              <div className="flex items-center gap-3">
+                <Power className="size-5" />
+                Initialize Command Center
+                <ChevronRight className="size-5" />
               </div>
             )}
           </Button>
