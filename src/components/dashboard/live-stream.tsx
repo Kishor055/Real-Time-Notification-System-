@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState } from 'react';
@@ -37,7 +36,7 @@ interface Notification {
 }
 
 export function LiveStream({ filterAll = false }: { filterAll?: boolean }) {
-  const { db } = useFirestore();
+  const db = useFirestore();
   const [filter, setFilter] = useState('');
   const [topicFilter, setTopicFilter] = useState<string | null>(null);
   const [summarizingId, setSummarizingId] = useState<string | null>(null);

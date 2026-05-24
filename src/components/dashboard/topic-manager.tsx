@@ -1,4 +1,3 @@
-
 'use client';
 
 import React from 'react';
@@ -20,7 +19,7 @@ interface Topic {
 }
 
 export function TopicManager() {
-  const { db } = useFirestore();
+  const db = useFirestore();
   const { data: topics, loading } = useCollection<Topic>('topics');
 
   const toggleTopic = (id: string, currentActive: boolean) => {

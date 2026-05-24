@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState } from 'react';
@@ -18,7 +17,7 @@ export function SmartDispatcher() {
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [result, setResult] = useState<SuggestNotificationRoutingOutput | null>(null);
-  const { db } = useFirestore();
+  const db = useFirestore();
   const { user } = useUser();
 
   const handleAnalyze = async () => {

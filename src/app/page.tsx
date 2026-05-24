@@ -38,7 +38,7 @@ import { SmartDispatcher } from '@/components/dashboard/smart-dispatcher';
 import { LiveStream } from '@/components/dashboard/live-stream';
 import { HealthMetrics } from '@/components/dashboard/health-metrics';
 import { TopicManager } from '@/components/dashboard/topic-manager';
-import { useUser, useAuth, useCollection } from '@/firebase';
+import { useUser, useAuth, useFirestore, useCollection } from '@/firebase';
 import { signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, signInAnonymously } from 'firebase/auth';
 import { doc, setDoc } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast';
@@ -47,7 +47,8 @@ import { FirestorePermissionError } from '@/firebase/errors';
 
 export default function NovaPulseDashboard() {
   const { user, loading: authLoading } = useUser();
-  const { auth, db } = useAuth();
+  const auth = useAuth();
+  const db = useFirestore();
   const { toast } = useToast();
   const [activeTab, setActiveTab] = useState('overview');
   const [latency, setLatency] = useState(4);
@@ -292,7 +293,7 @@ function AuthScreen() {
   const [password, setPassword] = useState('');
   const [isRegistering, setIsRegistering] = useState(false);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
-  const { auth } = useAuth();
+  const auth = useAuth();
   const { toast } = useToast();
 
   const handleAuth = async (e: React.FormEvent) => {
