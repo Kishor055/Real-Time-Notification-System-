@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect } from 'react';
@@ -15,7 +16,10 @@ import {
   Server,
   Users,
   LogOut,
-  UserCircle
+  UserCircle,
+  Loader2,
+  Lock,
+  ChevronRight
 } from 'lucide-react';
 import { 
   Sidebar, 
@@ -33,13 +37,12 @@ import {
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { SmartDispatcher } from '@/components/dashboard/smart-dispatcher';
 import { LiveStream } from '@/components/dashboard/live-stream';
 import { HealthMetrics } from '@/components/dashboard/health-metrics';
 import { TopicManager } from '@/components/dashboard/topic-manager';
 import { useUser, useAuth, useFirestore, useCollection } from '@/firebase';
-import { signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, signInAnonymously } from 'firebase/auth';
+import { signInAnonymously, signOut } from 'firebase/auth';
 import { doc, setDoc } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast';
 import { errorEmitter } from '@/firebase/error-emitter';
@@ -64,11 +67,11 @@ export default function NovaPulseDashboard() {
     const userRef = doc(db, 'users', user.uid);
     const updatePresence = (status: 'online' | 'offline' | 'away') => {
       const presenceData = {
-        email: user.email || `${user.uid.slice(0, 8)}@guest.novapulse.io`,
-        displayName: user.displayName || (user.isAnonymous ? 'Guest Operator' : 'Anonymous Operator'),
+        email: user.email || `${user.uid.slice(0, 8)}@operator.novapulse.io`,
+        displayName: user.displayName || 'Root Operator',
         status: status,
         lastActive: new Date().toISOString(),
-        role: user.isAnonymous ? 'viewer' : 'operator',
+        role: 'operator',
         isGuest: user.isAnonymous
       };
 
@@ -160,7 +163,7 @@ export default function NovaPulseDashboard() {
               <SidebarMenuItem>
                 <SidebarMenuButton onClick={() => setActiveTab('history')} isActive={activeTab === 'history'}>
                   <History className="size-4" />
-                  <span>Event Persistence</span>
+                  <span>Event Ledger</span>
                 </SidebarMenuButton>
               </SidebarMenuItem>
               <SidebarMenuItem>
@@ -179,8 +182,8 @@ export default function NovaPulseDashboard() {
                 <Users className="size-4 text-muted-foreground" />
               </div>
               <div className="flex flex-col">
-                <span className="text-[10px] font-bold truncate max-w-[100px]">{user.email || 'Guest Operator'}</span>
-                <span className="text-[9px] text-primary">{user.isAnonymous ? 'Guest Node' : 'Root Operator'}</span>
+                <span className="text-[10px] font-bold truncate max-w-[100px]">{user.uid.slice(0, 12)}</span>
+                <span className="text-[9px] text-primary">Live Session</span>
               </div>
             </div>
             <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-destructive" onClick={() => signOut(auth)}>
@@ -289,37 +292,11 @@ function LoaderPulse() {
 }
 
 function AuthScreen() {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [isRegistering, setIsRegistering] = useState(false);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const auth = useAuth();
   const { toast } = useToast();
 
-  const handleAuth = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!auth) return;
-    setIsLoggingIn(true);
-    try {
-      if (isRegistering) {
-        await createUserWithEmailAndPassword(auth, email, password);
-        toast({ title: "Node Registered", description: "Terminal access granted." });
-      } else {
-        await signInWithEmailAndPassword(auth, email, password);
-        toast({ title: "Session Initialized", description: "Operator authenticated." });
-      }
-    } catch (err: any) {
-      toast({ 
-        variant: "destructive", 
-        title: "Access Denied", 
-        description: err.message 
-      });
-    } finally {
-      setIsLoggingIn(false);
-    }
-  };
-
-  const handleGuestLogin = async () => {
+  const handleEnterPlatform = async () => {
     if (!auth) {
       toast({ 
         variant: "destructive", 
@@ -332,15 +309,15 @@ function AuthScreen() {
     try {
       await signInAnonymously(auth);
       toast({ 
-        title: "Guest Session Active", 
-        description: "Restricted viewer access granted.",
+        title: "Session Initialized", 
+        description: "Enterprise gateway access granted.",
       });
     } catch (err: any) {
-      console.error('Guest login failed:', err);
+      console.error('Login failed:', err);
       toast({ 
         variant: "destructive", 
-        title: "Protocol Failure", 
-        description: err.message || "Ensure Anonymous Auth is enabled in Firebase Console." 
+        title: "Access Denied", 
+        description: err.message || "Protocol handshake failed." 
       });
     } finally {
       setIsLoggingIn(false);
@@ -349,76 +326,78 @@ function AuthScreen() {
 
   return (
     <div className="h-screen w-full flex items-center justify-center bg-[#0f101a] p-4 relative overflow-hidden">
+      {/* Dynamic Background Elements */}
       <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-primary/10 rounded-full blur-[120px]" />
       <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-accent/10 rounded-full blur-[120px]" />
       
-      <Card className="glass-card border-none w-full max-w-md z-10 p-4">
-        <CardHeader className="text-center">
-          <div className="size-12 rounded-xl bg-primary mx-auto mb-4 flex items-center justify-center shadow-[0_0_20px_rgba(99,102,241,0.5)]">
-            <Radio className="size-7 text-white" />
+      <Card className="glass-card border-none w-full max-w-md z-10 p-4 border border-white/5">
+        <CardHeader className="text-center pb-8">
+          <div className="size-16 rounded-2xl bg-primary mx-auto mb-6 flex items-center justify-center shadow-[0_0_30px_rgba(99,102,241,0.5)] border border-white/20">
+            <Radio className="size-8 text-white animate-pulse" />
           </div>
-          <CardTitle className="font-headline text-3xl font-bold tracking-tight bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
-            NovaPulse Access
+          <CardTitle className="font-headline text-4xl font-bold tracking-tight bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent mb-2">
+            NovaPulse Gateway
           </CardTitle>
-          <CardDescription>Enter credentials to access the enterprise gateway.</CardDescription>
+          <CardDescription className="text-muted-foreground/80 font-body">
+            Enterprise-grade real-time notification infrastructure.
+          </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-6">
-          <form onSubmit={handleAuth} className="space-y-4">
-            <div className="space-y-2">
-              <label className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold">Terminal ID (Email)</label>
-              <Input 
-                type="email" 
-                placeholder="operator@novapulse.io" 
-                className="bg-secondary/20 border-border/40"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-              />
+        
+        <CardContent className="space-y-8">
+          <div className="space-y-4">
+            <div className="p-4 rounded-lg bg-white/5 border border-white/5 flex items-start gap-4">
+              <div className="p-2 rounded-md bg-primary/10">
+                <ShieldCheck className="size-5 text-primary" />
+              </div>
+              <div>
+                <h4 className="text-sm font-headline font-bold text-foreground">Secure Access</h4>
+                <p className="text-xs text-muted-foreground">Ephemeral session encryption active.</p>
+              </div>
             </div>
-            <div className="space-y-2">
-              <label className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold">Security Key (Password)</label>
-              <Input 
-                type="password" 
-                placeholder="••••••••" 
-                className="bg-secondary/20 border-border/40"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-              />
-            </div>
-            <Button type="submit" className="w-full font-headline font-bold" disabled={isLoggingIn}>
-              {isLoggingIn ? 'Processing...' : isRegistering ? 'Register Node' : 'Initialize Session'}
-            </Button>
-          </form>
 
-          <div className="relative">
-            <div className="absolute inset-0 flex items-center">
-              <span className="w-full border-t border-border/40" />
-            </div>
-            <div className="relative flex justify-center text-[10px] uppercase tracking-widest">
-              <span className="bg-[#161b22] px-2 text-muted-foreground">Or bypass protocols</span>
+            <div className="p-4 rounded-lg bg-white/5 border border-white/5 flex items-start gap-4">
+              <div className="p-2 rounded-md bg-accent/10">
+                <Zap className="size-5 text-accent" />
+              </div>
+              <div>
+                <h4 className="text-sm font-headline font-bold text-foreground">Live Telemetry</h4>
+                <p className="text-xs text-muted-foreground">Real-time cluster monitoring ready.</p>
+              </div>
             </div>
           </div>
 
           <Button 
-            variant="outline" 
-            className="w-full border-primary/20 hover:bg-primary/5 text-primary gap-2"
-            onClick={handleGuestLogin}
+            className="w-full h-14 font-headline text-lg font-bold group relative overflow-hidden" 
+            onClick={handleEnterPlatform}
             disabled={isLoggingIn}
           >
-            <UserCircle className="size-4" />
-            Initialize Guest Session
+            {isLoggingIn ? (
+              <Loader2 className="size-6 animate-spin" />
+            ) : (
+              <div className="flex items-center gap-3">
+                <Lock className="size-5" />
+                Initialize Session
+                <ChevronRight className="size-5 group-hover:translate-x-1 transition-transform" />
+              </div>
+            )}
+            <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent -translate-x-full group-hover:animate-[shimmer_2s_infinite] pointer-events-none" />
           </Button>
         </CardContent>
-        <div className="px-6 pb-6 text-center">
-          <button 
-            onClick={() => setIsRegistering(!isRegistering)}
-            className="text-xs text-muted-foreground hover:text-primary transition-colors font-code"
-          >
-            {isRegistering ? 'Existing Operator? Login' : 'New Node? Register Protocol'}
-          </button>
+
+        <div className="px-6 py-6 border-t border-white/5 text-center">
+          <p className="text-[10px] text-muted-foreground/60 uppercase tracking-[0.2em] font-code">
+            Backbone Protocol v2.5.9-LTS
+          </p>
         </div>
       </Card>
+
+      <style jsx global>{`
+        @keyframes shimmer {
+          100% {
+            transform: translateX(100%);
+          }
+        }
+      `}</style>
     </div>
   );
 }

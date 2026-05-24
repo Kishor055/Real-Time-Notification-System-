@@ -50,7 +50,7 @@
     }
   },
   "auth": {
-    "providers": ["google.com", "password"]
+    "providers": ["anonymous"]
   },
   "firestore": {
     "/notifications/{notificationId}": {
