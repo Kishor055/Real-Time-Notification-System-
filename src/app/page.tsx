@@ -55,7 +55,7 @@ export default function NovaPulseDashboard() {
 
   // Real-time Active User Tracking
   const { data: userPresenceDocs } = useCollection<any>('users');
-  const onlineCount = userPresenceDocs.filter(u => u.status === 'online').length;
+  const onlineCount = userPresenceDocs?.filter(u => u.status === 'online').length || 0;
 
   // Presence Tracking
   useEffect(() => {
@@ -298,6 +298,7 @@ function AuthScreen() {
 
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!auth) return;
     setIsLoggingIn(true);
     try {
       if (isRegistering) {
@@ -319,6 +320,14 @@ function AuthScreen() {
   };
 
   const handleGuestLogin = async () => {
+    if (!auth) {
+      toast({ 
+        variant: "destructive", 
+        title: "Protocol Failure", 
+        description: "Authentication service not available." 
+      });
+      return;
+    }
     setIsLoggingIn(true);
     try {
       await signInAnonymously(auth);
@@ -331,7 +340,7 @@ function AuthScreen() {
       toast({ 
         variant: "destructive", 
         title: "Protocol Failure", 
-        description: err.message || "Could not initialize guest session. Ensure Anonymous Auth is enabled in the Firebase Console." 
+        description: err.message || "Ensure Anonymous Auth is enabled in Firebase Console." 
       });
     } finally {
       setIsLoggingIn(false);
