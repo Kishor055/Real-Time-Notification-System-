@@ -38,7 +38,7 @@ import { SmartDispatcher } from '@/components/dashboard/smart-dispatcher';
 import { LiveStream } from '@/components/dashboard/live-stream';
 import { HealthMetrics } from '@/components/dashboard/health-metrics';
 import { TopicManager } from '@/components/dashboard/topic-manager';
-import { useUser, useFirestore, useAuth, useCollection } from '@/firebase';
+import { useUser, useAuth, useCollection } from '@/firebase';
 import { signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, signInAnonymously } from 'firebase/auth';
 import { doc, setDoc } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast';
@@ -326,10 +326,11 @@ function AuthScreen() {
         description: "Restricted viewer access granted.",
       });
     } catch (err: any) {
+      console.error('Guest login failed:', err);
       toast({ 
         variant: "destructive", 
         title: "Protocol Failure", 
-        description: "Could not initialize guest session." 
+        description: err.message || "Could not initialize guest session. Ensure Anonymous Auth is enabled in the Firebase Console." 
       });
     } finally {
       setIsLoggingIn(false);
