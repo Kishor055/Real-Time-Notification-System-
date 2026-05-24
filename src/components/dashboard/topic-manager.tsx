@@ -6,9 +6,9 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
-import { Zap, TrendingUp, AlertTriangle, ShieldCheck, Terminal, Users } from 'lucide-react';
+import { Zap, TrendingUp, AlertTriangle, ShieldCheck, Terminal, Users, Plus } from 'lucide-react';
 import { useCollection, useFirestore } from '@/firebase';
-import { doc, updateDoc } from 'firebase/firestore';
+import { doc, updateDoc, addDoc, collection } from 'firebase/firestore';
 import { errorEmitter } from '@/firebase/error-emitter';
 import { FirestorePermissionError } from '@/firebase/errors';
 
@@ -37,6 +37,23 @@ export function TopicManager() {
       });
   };
 
+  const createTopic = () => {
+    if (!db) return;
+    const name = prompt("Enter topic name:");
+    if (!name) return;
+    addDoc(collection(db, 'topics'), {
+      name,
+      active: true,
+      subscribersCount: 0
+    }).catch(err => {
+      errorEmitter.emit('permission-error', new FirestorePermissionError({
+        path: 'topics',
+        operation: 'create',
+        requestResourceData: { name, active: true, subscribersCount: 0 }
+      }));
+    });
+  };
+
   return (
     <div className="space-y-6 animate-fade-in">
       <Card className="glass-card border-none">
@@ -49,11 +66,20 @@ export function TopicManager() {
               </CardTitle>
               <CardDescription>Manage dynamic room subscriptions for low-latency dispatch.</CardDescription>
             </div>
-            <Button size="sm" className="bg-primary hover:bg-primary/80">Create New Channel</Button>
+            <Button size="sm" className="bg-primary hover:bg-primary/80 gap-2" onClick={createTopic}>
+              <Plus className="size-4" />
+              Create Channel
+            </Button>
           </div>
         </CardHeader>
         <CardContent>
           {loading && <p className="text-center py-10 animate-pulse text-muted-foreground">Synchronizing orchestration state...</p>}
+          {!loading && topics.length === 0 && (
+            <div className="text-center py-20 border border-dashed border-border/40 rounded-xl">
+              <Zap className="size-12 mx-auto text-muted-foreground mb-4 opacity-20" />
+              <p className="text-muted-foreground">No active channels found in cluster registries.</p>
+            </div>
+          )}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {topics.map((topic) => (
               <div 

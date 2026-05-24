@@ -17,23 +17,59 @@ import {
   Bot,
   Terminal,
   Server,
-  Users
+  Users,
+  LogOut,
+  Lock
 } from 'lucide-react';
-import { Sidebar, SidebarContent, SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarGroup, SidebarGroupLabel, SidebarInset, SidebarTrigger } from '@/components/ui/sidebar';
+import { Sidebar, SidebarContent, SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarGroup, SidebarGroupLabel, SidebarInset, SidebarTrigger, SidebarFooter } from '@/components/ui/sidebar';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import { SmartDispatcher } from '@/components/dashboard/smart-dispatcher';
 import { LiveStream } from '@/components/dashboard/live-stream';
 import { HealthMetrics } from '@/components/dashboard/health-metrics';
 import { TopicManager } from '@/components/dashboard/topic-manager';
+import { useUser, useFirestore } from '@/firebase';
+import { signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut } from 'firebase/auth';
+import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { useAuth } from '@/firebase/provider';
 
 export default function NovaPulseDashboard() {
+  const { user, loading: authLoading } = useUser();
+  const { auth, db } = useAuth();
   const [activeTab, setActiveTab] = useState('overview');
   const [connectionCount, setConnectionCount] = useState(12482);
   const [latency, setLatency] = useState(4);
+
+  // Presence Tracking
+  useEffect(() => {
+    if (!user || !db) return;
+
+    const userRef = doc(db, 'users', user.uid);
+    const updatePresence = (status: 'online' | 'offline' | 'away') => {
+      setDoc(userRef, {
+        email: user.email,
+        displayName: user.displayName || 'Anonymous Operator',
+        status: status,
+        lastActive: new Date().toISOString(),
+        role: 'operator'
+      }, { merge: true });
+    };
+
+    updatePresence('online');
+
+    const handleVisibilityChange = () => {
+      updatePresence(document.visibilityState === 'visible' ? 'online' : 'away');
+    };
+
+    window.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      window.removeEventListener('visibilitychange', handleVisibilityChange);
+      updatePresence('offline');
+    };
+  }, [user, db]);
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -43,9 +79,12 @@ export default function NovaPulseDashboard() {
     return () => clearInterval(interval);
   }, []);
 
+  if (authLoading) return <div className="h-screen w-full flex items-center justify-center bg-[#0f101a]"><LoaderPulse /></div>;
+
+  if (!user) return <AuthScreen />;
+
   return (
     <div className="flex h-screen w-full bg-[#0f101a] text-foreground">
-      {/* Sidebar Component */}
       <Sidebar collapsible="icon" className="border-r border-border/40">
         <SidebarHeader className="p-4 flex flex-row items-center gap-2">
           <div className="size-8 rounded-lg bg-primary flex items-center justify-center shadow-[0_0_15px_rgba(99,102,241,0.5)]">
@@ -110,6 +149,22 @@ export default function NovaPulseDashboard() {
             </SidebarMenu>
           </SidebarGroup>
         </SidebarContent>
+        <SidebarFooter className="p-4 border-t border-border/40">
+          <div className="flex items-center justify-between group-data-[collapsible=icon]:flex-col group-data-[collapsible=icon]:gap-4">
+            <div className="flex items-center gap-2 group-data-[collapsible=icon]:hidden">
+              <div className="size-8 rounded-full bg-secondary flex items-center justify-center border border-border/20">
+                <Users className="size-4 text-muted-foreground" />
+              </div>
+              <div className="flex flex-col">
+                <span className="text-[10px] font-bold truncate max-w-[100px]">{user.email}</span>
+                <span className="text-[9px] text-primary">Operator</span>
+              </div>
+            </div>
+            <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-destructive" onClick={() => signOut(auth)}>
+              <LogOut className="size-4" />
+            </Button>
+          </div>
+        </SidebarFooter>
       </Sidebar>
 
       <SidebarInset className="flex-1 flex flex-col overflow-hidden">
@@ -135,9 +190,6 @@ export default function NovaPulseDashboard() {
               <span className="text-[10px] text-muted-foreground uppercase tracking-widest">Live Connections</span>
               <span className="font-code text-accent font-bold">{connectionCount.toLocaleString()}</span>
             </div>
-            <div className="h-8 w-8 rounded-full bg-secondary flex items-center justify-center border border-border/40 cursor-pointer hover:bg-border/40 transition-colors">
-              <Users className="size-4 text-muted-foreground" />
-            </div>
           </div>
         </header>
 
@@ -146,36 +198,11 @@ export default function NovaPulseDashboard() {
             
             {activeTab === 'overview' && (
               <div className="space-y-6 animate-fade-in">
-                {/* Stats Grid */}
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                  <HealthCard 
-                    title="Active Sessions" 
-                    value={connectionCount.toLocaleString()} 
-                    trend="+12% vs last hour" 
-                    icon={Users} 
-                    color="primary"
-                  />
-                  <HealthCard 
-                    title="Message Throughput" 
-                    value="42.5k ops/s" 
-                    trend="Steady" 
-                    icon={Cpu} 
-                    color="accent"
-                  />
-                  <HealthCard 
-                    title="Nodes Online" 
-                    value="12/12" 
-                    trend="Nominal" 
-                    icon={Server} 
-                    color="primary"
-                  />
-                  <HealthCard 
-                    title="Security Shield" 
-                    value="Active" 
-                    trend="JWT Validated" 
-                    icon={ShieldCheck} 
-                    color="accent"
-                  />
+                  <HealthCard title="Active Sessions" value={connectionCount.toLocaleString()} trend="+12% vs last hour" icon={Users} color="primary" />
+                  <HealthCard title="Message Throughput" value="42.5k ops/s" trend="Steady" icon={Cpu} color="accent" />
+                  <HealthCard title="Nodes Online" value="12/12" trend="Nominal" icon={Server} color="primary" />
+                  <HealthCard title="Security Shield" value="Active" trend="JWT Validated" icon={ShieldCheck} color="accent" />
                 </div>
 
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -193,12 +220,7 @@ export default function NovaPulseDashboard() {
             {activeTab === 'dispatcher' && <SmartDispatcher />}
             {activeTab === 'topics' && <TopicManager />}
             {activeTab === 'history' && (
-              <div className="glass-card rounded-xl p-8 border-border/40 text-center space-y-4">
-                <History className="size-12 mx-auto text-muted-foreground/40" />
-                <h3 className="font-headline text-2xl font-bold">Event Persistence Ledger</h3>
-                <p className="text-muted-foreground max-w-md mx-auto">
-                  NovaPulse persists all notifications to PostgreSQL for delivery tracking and offline history retrieval. Accessing full audit logs...
-                </p>
+              <div className="space-y-6">
                 <LiveStream filterAll />
               </div>
             )}
@@ -207,7 +229,7 @@ export default function NovaPulseDashboard() {
                 <Card className="glass-card border-none">
                   <CardHeader>
                     <CardTitle className="font-headline">Inbound Push API Explorer</CardTitle>
-                    <CardDescription>Trigger notifications globally or to specific targets via JWT-protected REST endpoints.</CardDescription>
+                    <CardDescription>Trigger notifications globally via JWT-protected REST endpoints.</CardDescription>
                   </CardHeader>
                   <CardContent>
                     <div className="bg-black/50 p-6 rounded-lg font-code text-sm text-primary overflow-x-auto whitespace-pre">
@@ -225,10 +247,94 @@ export default function NovaPulseDashboard() {
                 </Card>
               </div>
             )}
-
           </div>
         </main>
       </SidebarInset>
+    </div>
+  );
+}
+
+function LoaderPulse() {
+  return (
+    <div className="flex flex-col items-center gap-4">
+      <div className="size-16 rounded-full bg-primary/20 flex items-center justify-center animate-pulse">
+        <Radio className="size-8 text-primary" />
+      </div>
+      <span className="font-headline text-sm animate-pulse text-muted-foreground uppercase tracking-widest">Initializing NovaPulse Backbone...</span>
+    </div>
+  );
+}
+
+function AuthScreen() {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [isRegistering, setIsRegistering] = useState(false);
+  const { auth } = useAuth();
+
+  const handleAuth = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      if (isRegistering) {
+        await createUserWithEmailAndPassword(auth, email, password);
+      } else {
+        await signInWithEmailAndPassword(auth, email, password);
+      }
+    } catch (err: any) {
+      alert(err.message);
+    }
+  };
+
+  return (
+    <div className="h-screen w-full flex items-center justify-center bg-[#0f101a] p-4 relative overflow-hidden">
+      <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-primary/10 rounded-full blur-[120px]" />
+      <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-accent/10 rounded-full blur-[120px]" />
+      
+      <Card className="glass-card border-none w-full max-w-md z-10 p-4">
+        <CardHeader className="text-center">
+          <div className="size-12 rounded-xl bg-primary mx-auto mb-4 flex items-center justify-center shadow-[0_0_20px_rgba(99,102,241,0.5)]">
+            <Radio className="size-7 text-white" />
+          </div>
+          <CardTitle className="font-headline text-3xl font-bold tracking-tight bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
+            NovaPulse Access
+          </CardTitle>
+          <CardDescription>Enter credentials to access the enterprise gateway.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={handleAuth} className="space-y-4">
+            <div className="space-y-2">
+              <label className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold">Terminal ID (Email)</label>
+              <Input 
+                type="email" 
+                placeholder="operator@novapulse.io" 
+                className="bg-secondary/20 border-border/40"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold">Security Key (Password)</label>
+              <Input 
+                type="password" 
+                placeholder="••••••••" 
+                className="bg-secondary/20 border-border/40"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+              />
+            </div>
+            <Button type="submit" className="w-full font-headline font-bold">
+              {isRegistering ? 'Register Node' : 'Initialize Session'}
+            </Button>
+          </form>
+        </CardContent>
+        <div className="px-6 pb-6 text-center">
+          <button 
+            onClick={() => setIsRegistering(!isRegistering)}
+            className="text-xs text-muted-foreground hover:text-primary transition-colors font-code"
+          >
+            {isRegistering ? 'Existing Operator? Login' : 'New Node? Register Protocol'}
+          </button>
+        </div>
+      </Card>
     </div>
   );
 }
