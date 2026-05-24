@@ -9,11 +9,17 @@ import { Badge } from '@/components/ui/badge';
 import { Loader2, Bot, Send, ArrowRight, CheckCircle2, AlertCircle } from 'lucide-react';
 import { suggestNotificationRouting } from '@/ai/flows/suggest-notification-routing-flow';
 import type { SuggestNotificationRoutingOutput } from '@/ai/flows/suggest-notification-routing-flow';
+import { useFirestore, useUser } from '@/firebase';
+import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { errorEmitter } from '@/firebase/error-emitter';
+import { FirestorePermissionError } from '@/firebase/errors';
 
 export function SmartDispatcher() {
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [result, setResult] = useState<SuggestNotificationRoutingOutput | null>(null);
+  const { db } = useFirestore();
+  const { user } = useUser();
 
   const handleAnalyze = async () => {
     if (!input.trim()) return;
@@ -27,10 +33,41 @@ export function SmartDispatcher() {
       });
       setResult(data);
     } catch (error) {
-      console.error(error);
+      console.error('AI Analysis failed', error);
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const handleDispatch = () => {
+    if (!result || !db) return;
+
+    const notificationData = {
+      userId: user?.uid || 'anonymous',
+      title: result.categorization + " Event",
+      message: result.summary,
+      topic: result.suggestedRoutes[0]?.toLowerCase() || 'general',
+      severity: result.priorityLevel,
+      status: 'unread',
+      createdAt: new Date().toISOString(),
+      aiCategory: result.categorization,
+      aiPriority: result.priorityLevel,
+      aiSummary: result.summary
+    };
+
+    addDoc(collection(db, 'notifications'), notificationData)
+      .then(() => {
+        setResult(null);
+        setInput('');
+      })
+      .catch(async (error) => {
+        const permissionError = new FirestorePermissionError({
+          path: 'notifications',
+          operation: 'create',
+          requestResourceData: notificationData
+        });
+        errorEmitter.emit('permission-error', permissionError);
+      });
   };
 
   return (
@@ -130,9 +167,12 @@ export function SmartDispatcher() {
                 </div>
               </div>
             </CardContent>
-            <CardFooter>
-              <Button variant="outline" className="w-full border-primary/20 hover:bg-primary/10" onClick={() => setResult(null)}>
-                Clear Analysis
+            <CardFooter className="flex gap-2">
+              <Button variant="outline" className="flex-1 border-primary/20 hover:bg-primary/10" onClick={() => setResult(null)}>
+                Clear
+              </Button>
+              <Button className="flex-1" onClick={handleDispatch}>
+                Broadcast Notification
               </Button>
             </CardFooter>
           </Card>

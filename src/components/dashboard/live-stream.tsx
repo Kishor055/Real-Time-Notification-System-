@@ -1,47 +1,28 @@
 
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Bell, Clock, Terminal, TrendingUp, AlertTriangle, ShieldCheck } from 'lucide-react';
+import { Bell, TrendingUp, AlertTriangle, Terminal, ShieldCheck } from 'lucide-react';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { useCollection } from '@/firebase';
 
-interface Event {
+interface Notification {
   id: string;
   topic: 'trading' | 'alerts' | 'monitoring' | 'security';
   title: string;
   message: string;
-  time: string;
+  createdAt: string;
   severity: 'low' | 'medium' | 'high' | 'critical';
 }
 
-const INITIAL_EVENTS: Event[] = [
-  { id: '1', topic: 'trading', title: 'BTC/USD Liquidation', message: 'Significant buy wall detected at $65k. Volume spike observed.', time: '14:20:05', severity: 'medium' },
-  { id: '2', topic: 'security', title: 'Intrusion Detected', message: 'Failed login attempts from unknown IP 192.168.1.42.', time: '14:21:12', severity: 'high' },
-  { id: '3', topic: 'monitoring', title: 'CPU Threshold', message: 'Node-14 cluster utilization exceeded 85%. Scaling initiated.', time: '14:22:30', severity: 'low' },
-  { id: '4', topic: 'alerts', title: 'System Outage', message: 'Websocket gateway in US-EAST-1 experiencing intermittent drops.', time: '14:23:45', severity: 'critical' },
-];
-
 export function LiveStream({ filterAll = false }: { filterAll?: boolean }) {
-  const [events, setEvents] = useState<Event[]>(INITIAL_EVENTS);
-
-  useEffect(() => {
-    const interval = setInterval(() => {
-      const types: Event['topic'][] = ['trading', 'alerts', 'monitoring', 'security'];
-      const severities: Event['severity'][] = ['low', 'medium', 'high', 'critical'];
-      const newEvent: Event = {
-        id: Math.random().toString(36).substr(2, 9),
-        topic: types[Math.floor(Math.random() * types.length)],
-        severity: severities[Math.floor(Math.random() * severities.length)],
-        title: 'New Dynamic Event',
-        message: 'Real-time telemetry update processed by NovaPulse cluster.',
-        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-      };
-      setEvents(prev => [newEvent, ...prev].slice(0, 20));
-    }, 5000);
-    return () => clearInterval(interval);
-  }, []);
+  const { data: events, loading } = useCollection<Notification>('notifications', {
+    orderByField: 'createdAt',
+    orderDirection: 'desc',
+    limitCount: 50
+  });
 
   return (
     <Card className="glass-card border-none h-[500px] flex flex-col">
@@ -61,6 +42,10 @@ export function LiveStream({ filterAll = false }: { filterAll?: boolean }) {
       <CardContent className="flex-1 overflow-hidden p-0">
         <ScrollArea className="h-full px-6 pb-6">
           <div className="space-y-4 pt-2">
+            {loading && <p className="text-center text-muted-foreground p-8 animate-pulse">Syncing with cluster...</p>}
+            {!loading && events.length === 0 && (
+              <p className="text-center text-muted-foreground p-8">No active events in current buffer.</p>
+            )}
             {events.map((event) => (
               <div 
                 key={event.id} 
@@ -73,7 +58,9 @@ export function LiveStream({ filterAll = false }: { filterAll?: boolean }) {
                   </div>
                   <div className="flex items-center gap-2">
                     <SeverityBadge severity={event.severity} />
-                    <span className="text-[10px] font-code text-muted-foreground">{event.time}</span>
+                    <span className="text-[10px] font-code text-muted-foreground">
+                      {new Date(event.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                    </span>
                   </div>
                 </div>
                 <p className="text-sm text-muted-foreground line-clamp-2 font-body group-hover:text-foreground transition-colors">
@@ -94,16 +81,17 @@ export function LiveStream({ filterAll = false }: { filterAll?: boolean }) {
   );
 }
 
-function TopicIcon({ topic }: { topic: Event['topic'] }) {
+function TopicIcon({ topic }: { topic: Notification['topic'] }) {
   switch (topic) {
     case 'trading': return <TrendingUp className="size-3.5 text-accent" />;
     case 'alerts': return <AlertTriangle className="size-3.5 text-destructive" />;
     case 'monitoring': return <Terminal className="size-3.5 text-primary" />;
     case 'security': return <ShieldCheck className="size-3.5 text-primary" />;
+    default: return <Bell className="size-3.5 text-muted-foreground" />;
   }
 }
 
-function SeverityBadge({ severity }: { severity: Event['severity'] }) {
+function SeverityBadge({ severity }: { severity: Notification['severity'] }) {
   switch (severity) {
     case 'low': return <Badge variant="secondary" className="text-[9px] h-4 px-1.5 uppercase font-bold tracking-tighter opacity-70">Low</Badge>;
     case 'medium': return <Badge className="text-[9px] h-4 px-1.5 uppercase font-bold tracking-tighter bg-blue-500/10 text-blue-400 border-none">Med</Badge>;
