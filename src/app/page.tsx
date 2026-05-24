@@ -2,46 +2,59 @@
 
 import React, { useState, useEffect } from 'react';
 import { 
-  AppWindow, 
   Activity, 
   Zap, 
   ShieldCheck, 
-  Settings, 
   History, 
   Radio, 
   Bell, 
   Cpu, 
-  BarChart3, 
   LayoutDashboard,
   Bot,
   Terminal,
   Server,
   Users,
   LogOut,
-  Lock,
   UserCircle
 } from 'lucide-react';
-import { Sidebar, SidebarContent, SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarGroup, SidebarGroupLabel, SidebarInset, SidebarTrigger, SidebarFooter } from '@/components/ui/sidebar';
+import { 
+  Sidebar, 
+  SidebarContent, 
+  SidebarHeader, 
+  SidebarMenu, 
+  SidebarMenuButton, 
+  SidebarMenuItem, 
+  SidebarGroup, 
+  SidebarGroupLabel, 
+  SidebarInset, 
+  SidebarTrigger, 
+  SidebarFooter 
+} from '@/components/ui/sidebar';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { SmartDispatcher } from '@/components/dashboard/smart-dispatcher';
 import { LiveStream } from '@/components/dashboard/live-stream';
 import { HealthMetrics } from '@/components/dashboard/health-metrics';
 import { TopicManager } from '@/components/dashboard/topic-manager';
-import { useUser, useFirestore } from '@/firebase';
+import { useUser, useFirestore, useAuth, useCollection } from '@/firebase';
 import { signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, signInAnonymously } from 'firebase/auth';
-import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
-import { useAuth } from '@/firebase/provider';
+import { doc, setDoc } from 'firebase/firestore';
+import { useToast } from '@/hooks/use-toast';
+import { errorEmitter } from '@/firebase/error-emitter';
+import { FirestorePermissionError } from '@/firebase/errors';
 
 export default function NovaPulseDashboard() {
   const { user, loading: authLoading } = useUser();
   const { auth, db } = useAuth();
+  const { toast } = useToast();
   const [activeTab, setActiveTab] = useState('overview');
-  const [connectionCount, setConnectionCount] = useState(12482);
   const [latency, setLatency] = useState(4);
+
+  // Real-time Active User Tracking
+  const { data: userPresenceDocs } = useCollection<any>('users');
+  const onlineCount = userPresenceDocs.filter(u => u.status === 'online').length;
 
   // Presence Tracking
   useEffect(() => {
@@ -49,14 +62,23 @@ export default function NovaPulseDashboard() {
 
     const userRef = doc(db, 'users', user.uid);
     const updatePresence = (status: 'online' | 'offline' | 'away') => {
-      setDoc(userRef, {
-        email: user.email || 'guest@novapulse.io',
+      const presenceData = {
+        email: user.email || `${user.uid.slice(0, 8)}@guest.novapulse.io`,
         displayName: user.displayName || (user.isAnonymous ? 'Guest Operator' : 'Anonymous Operator'),
         status: status,
         lastActive: new Date().toISOString(),
         role: user.isAnonymous ? 'viewer' : 'operator',
         isGuest: user.isAnonymous
-      }, { merge: true });
+      };
+
+      setDoc(userRef, presenceData, { merge: true })
+        .catch(async (err) => {
+          errorEmitter.emit('permission-error', new FirestorePermissionError({
+            path: `users/${user.uid}`,
+            operation: 'write',
+            requestResourceData: presenceData
+          }));
+        });
     };
 
     updatePresence('online');
@@ -74,7 +96,6 @@ export default function NovaPulseDashboard() {
 
   useEffect(() => {
     const interval = setInterval(() => {
-      setConnectionCount(prev => prev + Math.floor(Math.random() * 21) - 10);
       setLatency(prev => Math.max(2, Math.min(12, prev + (Math.random() * 2 - 1))));
     }, 3000);
     return () => clearInterval(interval);
@@ -157,8 +178,8 @@ export default function NovaPulseDashboard() {
                 <Users className="size-4 text-muted-foreground" />
               </div>
               <div className="flex flex-col">
-                <span className="text-[10px] font-bold truncate max-w-[100px]">{user.email || 'Guest Session'}</span>
-                <span className="text-[9px] text-primary">{user.isAnonymous ? 'Guest' : 'Operator'}</span>
+                <span className="text-[10px] font-bold truncate max-w-[100px]">{user.email || 'Guest Operator'}</span>
+                <span className="text-[9px] text-primary">{user.isAnonymous ? 'Guest Node' : 'Root Operator'}</span>
               </div>
             </div>
             <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-destructive" onClick={() => signOut(auth)}>
@@ -188,8 +209,8 @@ export default function NovaPulseDashboard() {
               <span className="font-code text-primary font-bold">{latency.toFixed(1)}ms</span>
             </div>
             <div className="flex flex-col items-end">
-              <span className="text-[10px] text-muted-foreground uppercase tracking-widest">Live Connections</span>
-              <span className="font-code text-accent font-bold">{connectionCount.toLocaleString()}</span>
+              <span className="text-[10px] text-muted-foreground uppercase tracking-widest">Active Operators</span>
+              <span className="font-code text-accent font-bold">{onlineCount}</span>
             </div>
           </div>
         </header>
@@ -200,9 +221,9 @@ export default function NovaPulseDashboard() {
             {activeTab === 'overview' && (
               <div className="space-y-6 animate-fade-in">
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                  <HealthCard title="Active Sessions" value={connectionCount.toLocaleString()} trend="+12% vs last hour" icon={Users} color="primary" />
+                  <HealthCard title="Active Nodes" value={onlineCount.toString()} trend="Live presence" icon={Users} color="primary" />
                   <HealthCard title="Message Throughput" value="42.5k ops/s" trend="Steady" icon={Cpu} color="accent" />
-                  <HealthCard title="Nodes Online" value="12/12" trend="Nominal" icon={Server} color="primary" />
+                  <HealthCard title="Cluster Status" value="Nominal" trend="12/12 Online" icon={Server} color="primary" />
                   <HealthCard title="Security Shield" value="Active" trend="JWT Validated" icon={ShieldCheck} color="accent" />
                 </div>
 
@@ -272,6 +293,7 @@ function AuthScreen() {
   const [isRegistering, setIsRegistering] = useState(false);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const { auth } = useAuth();
+  const { toast } = useToast();
 
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -279,11 +301,17 @@ function AuthScreen() {
     try {
       if (isRegistering) {
         await createUserWithEmailAndPassword(auth, email, password);
+        toast({ title: "Node Registered", description: "Terminal access granted." });
       } else {
         await signInWithEmailAndPassword(auth, email, password);
+        toast({ title: "Session Initialized", description: "Operator authenticated." });
       }
     } catch (err: any) {
-      alert(err.message);
+      toast({ 
+        variant: "destructive", 
+        title: "Access Denied", 
+        description: err.message 
+      });
     } finally {
       setIsLoggingIn(false);
     }
@@ -293,8 +321,16 @@ function AuthScreen() {
     setIsLoggingIn(true);
     try {
       await signInAnonymously(auth);
+      toast({ 
+        title: "Guest Session Active", 
+        description: "Restricted viewer access granted.",
+      });
     } catch (err: any) {
-      alert(err.message);
+      toast({ 
+        variant: "destructive", 
+        title: "Protocol Failure", 
+        description: "Could not initialize guest session." 
+      });
     } finally {
       setIsLoggingIn(false);
     }
