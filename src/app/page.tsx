@@ -19,7 +19,8 @@ import {
   Lock,
   ChevronRight,
   UserCircle,
-  Power
+  Power,
+  Key
 } from 'lucide-react';
 import { 
   Sidebar, 
@@ -37,6 +38,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { SmartDispatcher } from '@/components/dashboard/smart-dispatcher';
 import { LiveStream } from '@/components/dashboard/live-stream';
 import { HealthMetrics } from '@/components/dashboard/health-metrics';
@@ -47,6 +49,7 @@ import { doc, setDoc } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast';
 import { errorEmitter } from '@/firebase/error-emitter';
 import { FirestorePermissionError } from '@/firebase/errors';
+import { validateOperator, Operator } from '@/lib/operator-db';
 
 export default function NovaPulseDashboard() {
   const { user, loading: authLoading } = useUser();
@@ -54,33 +57,41 @@ export default function NovaPulseDashboard() {
   const db = useFirestore();
   const [activeTab, setActiveTab] = useState('overview');
   const [latency, setLatency] = useState(4);
+  const [localOperator, setLocalOperator] = useState<Operator | null>(null);
 
   // Real-time Active User Tracking
   const { data: userPresenceDocs } = useCollection<any>('users');
   const onlineCount = userPresenceDocs?.filter(u => u.status === 'online').length || 0;
 
-  // Presence Tracking
+  // Background Anonymous Auth to enable Firestore features
   useEffect(() => {
-    if (!user || !db) return;
+    if (auth && !user) {
+      signInAnonymously(auth).catch(err => {
+        console.warn("Background auth failed, operating in offline/local mode:", err.message);
+      });
+    }
+  }, [auth, user]);
 
-    const userRef = doc(db, 'users', user.uid);
+  // Presence Tracking for the logged-in operator
+  useEffect(() => {
+    if (!localOperator || !db) return;
+
+    const operatorId = localOperator.id;
+    const userRef = doc(db, 'users', operatorId);
+    
     const updatePresence = (status: 'online' | 'offline' | 'away') => {
       const presenceData = {
-        email: `guest-${user.uid.slice(0, 5)}@novapulse.io`,
-        displayName: user.isAnonymous ? `Guest Operator ${user.uid.slice(0, 4)}` : 'Admin User',
+        email: `${operatorId.toLowerCase()}@novapulse.io`,
+        displayName: localOperator.name,
         status: status,
         lastActive: new Date().toISOString(),
-        role: 'operator',
-        isGuest: true
+        role: localOperator.role,
+        clearance: localOperator.clearance
       };
 
       setDoc(userRef, presenceData, { merge: true })
         .catch(async (err) => {
-          errorEmitter.emit('permission-error', new FirestorePermissionError({
-            path: `users/${user.uid}`,
-            operation: 'write',
-            requestResourceData: presenceData
-          }));
+          console.error("Presence sync error:", err);
         });
     };
 
@@ -95,7 +106,7 @@ export default function NovaPulseDashboard() {
       window.removeEventListener('visibilitychange', handleVisibilityChange);
       updatePresence('offline');
     };
-  }, [user, db]);
+  }, [localOperator, db]);
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -106,7 +117,7 @@ export default function NovaPulseDashboard() {
 
   if (authLoading) return <div className="h-screen w-full flex items-center justify-center bg-[#0f101a]"><LoaderPulse /></div>;
 
-  if (!user) return <AuthScreen />;
+  if (!localOperator) return <AuthScreen onLogin={setLocalOperator} />;
 
   return (
     <div className="flex h-screen w-full bg-[#0f101a] text-foreground">
@@ -175,11 +186,14 @@ export default function NovaPulseDashboard() {
                 <UserCircle className="size-4 text-muted-foreground" />
               </div>
               <div className="flex flex-col">
-                <span className="text-[10px] font-bold truncate max-w-[100px]">Guest Operator</span>
-                <span className="text-[9px] text-primary">Level 1 Clearance</span>
+                <span className="text-[10px] font-bold truncate max-w-[100px]">{localOperator.name}</span>
+                <span className="text-[9px] text-primary">{localOperator.clearance} Clearance</span>
               </div>
             </div>
-            <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-destructive" onClick={() => signOut(auth)}>
+            <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-destructive" onClick={() => {
+              setLocalOperator(null);
+              signOut(auth).catch(() => {});
+            }}>
               <LogOut className="size-4" />
             </Button>
           </div>
@@ -260,28 +274,31 @@ function LoaderPulse() {
   );
 }
 
-function AuthScreen() {
-  const [isLoggingIn, setIsLoggingIn] = useState(false);
-  const auth = useAuth();
+function AuthScreen({ onLogin }: { onLogin: (operator: Operator) => void }) {
+  const [operatorId, setOperatorId] = useState('');
+  const [isVerifying, setIsVerifying] = useState(false);
   const { toast } = useToast();
 
-  const handleEnterPlatform = async () => {
-    setIsLoggingIn(true);
-    try {
-      await signInAnonymously(auth);
-      toast({ 
-        title: "Protocol Handshake Complete", 
-        description: "Welcome to the NovaPulse Backbone." 
-      });
-    } catch (err: any) {
-      toast({ 
-        variant: "destructive", 
-        title: "Backbone Error", 
-        description: err.message || "Check API configuration." 
-      });
-    } finally {
-      setIsLoggingIn(false);
-    }
+  const handleAccess = () => {
+    setIsVerifying(true);
+    // Simulate internal SQL check
+    setTimeout(() => {
+      const operator = validateOperator(operatorId);
+      if (operator) {
+        onLogin(operator);
+        toast({ 
+          title: "Access Granted", 
+          description: `Welcome back, ${operator.name}. Session initialized.` 
+        });
+      } else {
+        toast({ 
+          variant: "destructive", 
+          title: "Authentication Failed", 
+          description: "Operator ID not found in system registry." 
+        });
+      }
+      setIsVerifying(false);
+    }, 800);
   };
 
   return (
@@ -303,23 +320,33 @@ function AuthScreen() {
         </CardHeader>
         
         <CardContent className="space-y-6">
-          <div className="p-4 rounded-lg bg-white/5 border border-white/10 text-center space-y-2">
-            <p className="text-xs text-muted-foreground">
-              Session initialization will establish an ephemeral link to the regional notification cluster.
+          <div className="space-y-4">
+            <div className="relative">
+              <Key className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+              <Input 
+                placeholder="Enter Operator ID (e.g. ROOT-01)" 
+                className="pl-10 h-12 bg-white/5 border-white/10 text-center font-code"
+                value={operatorId}
+                onChange={(e) => setOperatorId(e.target.value.toUpperCase())}
+                onKeyDown={(e) => e.key === 'Enter' && handleAccess()}
+              />
+            </div>
+            <p className="text-[10px] text-center text-muted-foreground/60 italic">
+              Hint: Use ROOT-01, NAV-02, or GUEST-99
             </p>
           </div>
 
           <Button 
             className="w-full h-14 font-headline font-bold text-lg" 
-            onClick={handleEnterPlatform}
-            disabled={isLoggingIn}
+            onClick={handleAccess}
+            disabled={isVerifying || !operatorId}
           >
-            {isLoggingIn ? (
+            {isVerifying ? (
               <Loader2 className="size-6 animate-spin" />
             ) : (
               <div className="flex items-center gap-3">
                 <Power className="size-5" />
-                Initialize Command Center
+                Establish Link
                 <ChevronRight className="size-5" />
               </div>
             )}
@@ -328,7 +355,7 @@ function AuthScreen() {
 
         <div className="px-6 py-4 border-t border-white/5 text-center">
           <p className="text-[10px] text-muted-foreground/40 uppercase tracking-[0.2em] font-code">
-            Backbone v2.6.1-PROD
+            Secure Backbone Access v2.7.0
           </p>
         </div>
       </Card>
