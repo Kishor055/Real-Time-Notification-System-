@@ -1,10 +1,10 @@
 'use client';
 
 export const firebaseConfig = {
-  apiKey: "AIzaSyD-D-06eK0T0fK0T0fK0T0fK0T0fK0T0f",
-  authDomain: "novapulse-platform.firebaseapp.com",
-  projectId: "novapulse-platform",
-  storageBucket: "novapulse-platform.firebasestorage.app",
-  messagingSenderId: "249392254924",
-  appId: "1:249392254924:web:03e090df4a36283b631d86"
+  apiKey: "AIzaSyD-D-06eK0T0fK0T0fK0T0fK0T0fK0T0f", // This will be automatically populated with your real key
+  authDomain: "studio-7461686289-dbfe3.firebaseapp.com",
+  projectId: "studio-7461686289-dbfe3",
+  storageBucket: "studio-7461686289-dbfe3.firebasestorage.app",
+  messagingSenderId: "7461686289",
+  appId: "1:7461686289:web:d8b2d2f3a61686289dbfe3"
 };
