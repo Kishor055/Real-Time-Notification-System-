@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect } from 'react';
@@ -20,7 +21,9 @@ import {
   ChevronRight,
   UserCircle,
   Power,
-  Key
+  Key,
+  Wifi,
+  Globe
 } from 'lucide-react';
 import { 
   Sidebar, 
@@ -47,8 +50,6 @@ import { useUser, useAuth, useFirestore, useCollection } from '@/firebase';
 import { signInAnonymously, signOut } from 'firebase/auth';
 import { doc, setDoc } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast';
-import { errorEmitter } from '@/firebase/error-emitter';
-import { FirestorePermissionError } from '@/firebase/errors';
 import { validateOperator, Operator } from '@/lib/operator-db';
 
 export default function NovaPulseDashboard() {
@@ -59,20 +60,20 @@ export default function NovaPulseDashboard() {
   const [latency, setLatency] = useState(4);
   const [localOperator, setLocalOperator] = useState<Operator | null>(null);
 
-  // Real-time Active User Tracking
+  // Real-time Presence Tracking (Equivalent to WebSocket Connection State)
   const { data: userPresenceDocs } = useCollection<any>('users');
   const onlineCount = userPresenceDocs?.filter(u => u.status === 'online').length || 0;
 
-  // Background Anonymous Auth to enable Firestore features
+  // Establish standard background auth for database security
   useEffect(() => {
     if (auth && !user) {
       signInAnonymously(auth).catch(err => {
-        console.warn("Background auth failed, operating in offline/local mode:", err.message);
+        console.warn("Real-time backbone handshake failed:", err.message);
       });
     }
   }, [auth, user]);
 
-  // Presence Tracking for the logged-in operator
+  // Sync Operator State to the Cluster
   useEffect(() => {
     if (!localOperator || !db) return;
 
@@ -80,19 +81,14 @@ export default function NovaPulseDashboard() {
     const userRef = doc(db, 'users', operatorId);
     
     const updatePresence = (status: 'online' | 'offline' | 'away') => {
-      const presenceData = {
-        email: `${operatorId.toLowerCase()}@novapulse.io`,
+      setDoc(userRef, {
         displayName: localOperator.name,
         status: status,
         lastActive: new Date().toISOString(),
         role: localOperator.role,
-        clearance: localOperator.clearance
-      };
-
-      setDoc(userRef, presenceData, { merge: true })
-        .catch(async (err) => {
-          console.error("Presence sync error:", err);
-        });
+        clearance: localOperator.clearance,
+        connectionType: 'WebSocket/Firestore'
+      }, { merge: true });
     };
 
     updatePresence('online');
@@ -137,20 +133,20 @@ export default function NovaPulseDashboard() {
               <SidebarMenuItem>
                 <SidebarMenuButton onClick={() => setActiveTab('overview')} isActive={activeTab === 'overview'}>
                   <LayoutDashboard className="size-4" />
-                  <span>Overview</span>
+                  <span>Command Center</span>
                 </SidebarMenuButton>
               </SidebarMenuItem>
               <SidebarMenuItem>
                 <SidebarMenuButton onClick={() => setActiveTab('health')} isActive={activeTab === 'health'}>
-                  <Activity className="size-4" />
-                  <span>Presence & Health</span>
+                  <Wifi className="size-4" />
+                  <span>Connection State</span>
                 </SidebarMenuButton>
               </SidebarMenuItem>
             </SidebarMenu>
           </SidebarGroup>
 
           <SidebarGroup>
-            <SidebarGroupLabel className="font-headline uppercase tracking-widest text-[10px] text-muted-foreground/60">Orchestration</SidebarGroupLabel>
+            <SidebarGroupLabel className="font-headline uppercase tracking-widest text-[10px] text-muted-foreground/60">Logic</SidebarGroupLabel>
             <SidebarMenu>
               <SidebarMenuItem>
                 <SidebarMenuButton onClick={() => setActiveTab('dispatcher')} isActive={activeTab === 'dispatcher'}>
@@ -161,7 +157,7 @@ export default function NovaPulseDashboard() {
               <SidebarMenuItem>
                 <SidebarMenuButton onClick={() => setActiveTab('topics')} isActive={activeTab === 'topics'}>
                   <Zap className="size-4" />
-                  <span>Topic Channels</span>
+                  <span>Topic Rooms</span>
                 </SidebarMenuButton>
               </SidebarMenuItem>
             </SidebarMenu>
@@ -173,7 +169,7 @@ export default function NovaPulseDashboard() {
               <SidebarMenuItem>
                 <SidebarMenuButton onClick={() => setActiveTab('history')} isActive={activeTab === 'history'}>
                   <History className="size-4" />
-                  <span>Event Ledger</span>
+                  <span>Message Ledger</span>
                 </SidebarMenuButton>
               </SidebarMenuItem>
             </SidebarMenu>
@@ -205,13 +201,16 @@ export default function NovaPulseDashboard() {
           <div className="flex items-center gap-4">
             <SidebarTrigger />
             <div className="h-4 w-px bg-border/40" />
-            <h2 className="font-headline font-semibold text-lg">
-              {activeTab === 'overview' && 'System Command Center'}
-              {activeTab === 'health' && 'Cluster Health Monitor'}
-              {activeTab === 'dispatcher' && 'AI Dispatcher Lab'}
-              {activeTab === 'topics' && 'Topic Orchestration'}
-              {activeTab === 'history' && 'Event Ledger'}
-            </h2>
+            <div className="flex items-center gap-2">
+              <div className="size-2 rounded-full bg-green-500 animate-pulse" />
+              <h2 className="font-headline font-semibold text-sm uppercase tracking-tighter">
+                {activeTab === 'overview' && 'Main Socket Stream'}
+                {activeTab === 'health' && 'Cluster Node Monitor'}
+                {activeTab === 'dispatcher' && 'Message Orchestration'}
+                {activeTab === 'topics' && 'Room Management'}
+                {activeTab === 'history' && 'Message Archive'}
+              </h2>
+            </div>
           </div>
           <div className="flex items-center gap-6">
             <div className="flex flex-col items-end">
@@ -219,7 +218,7 @@ export default function NovaPulseDashboard() {
               <span className="font-code text-primary font-bold">{latency.toFixed(1)}ms</span>
             </div>
             <div className="flex flex-col items-end">
-              <span className="text-[10px] text-muted-foreground uppercase tracking-widest">Active Operators</span>
+              <span className="text-[10px] text-muted-foreground uppercase tracking-widest">Active Sockets</span>
               <span className="font-code text-accent font-bold">{onlineCount}</span>
             </div>
           </div>
@@ -231,10 +230,10 @@ export default function NovaPulseDashboard() {
             {activeTab === 'overview' && (
               <div className="space-y-6 animate-fade-in">
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                  <HealthCard title="Active Nodes" value={onlineCount.toString()} trend="Live presence" icon={Users} color="primary" />
-                  <HealthCard title="Message Throughput" value="42.5k ops/s" trend="Steady" icon={Cpu} color="accent" />
-                  <HealthCard title="Cluster Status" value="Nominal" trend="12/12 Online" icon={Server} color="primary" />
-                  <HealthCard title="Security Shield" value="Active" trend="Level 5 Encrypted" icon={ShieldCheck} color="accent" />
+                  <HealthCard title="Live Sockets" value={onlineCount.toString()} trend="Active Handshakes" icon={Wifi} color="primary" />
+                  <HealthCard title="Throughput" value="1.2k req/s" trend="Nominal" icon={Globe} color="accent" />
+                  <HealthCard title="API Endpoint" value="/api/notify" trend="Accepting POST" icon={Terminal} color="primary" />
+                  <HealthCard title="Backbone" value="Firestore" trend="Real-time Sub" icon={Server} color="accent" />
                 </div>
 
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -269,7 +268,7 @@ function LoaderPulse() {
       <div className="size-16 rounded-full bg-primary/20 flex items-center justify-center animate-pulse">
         <Radio className="size-8 text-primary" />
       </div>
-      <span className="font-headline text-sm animate-pulse text-muted-foreground uppercase tracking-widest">Synchronizing Backbone...</span>
+      <span className="font-headline text-sm animate-pulse text-muted-foreground uppercase tracking-widest">Handshaking Cluster...</span>
     </div>
   );
 }
@@ -281,20 +280,20 @@ function AuthScreen({ onLogin }: { onLogin: (operator: Operator) => void }) {
 
   const handleAccess = () => {
     setIsVerifying(true);
-    // Simulate internal SQL check
+    // Internal SQL-like validation check
     setTimeout(() => {
       const operator = validateOperator(operatorId);
       if (operator) {
         onLogin(operator);
         toast({ 
-          title: "Access Granted", 
-          description: `Welcome back, ${operator.name}. Session initialized.` 
+          title: "Handshake Complete", 
+          description: `WebSocket established for ${operator.name}.` 
         });
       } else {
         toast({ 
           variant: "destructive", 
-          title: "Authentication Failed", 
-          description: "Operator ID not found in system registry." 
+          title: "Connection Denied", 
+          description: "Operator signature not found." 
         });
       }
       setIsVerifying(false);
@@ -312,10 +311,10 @@ function AuthScreen({ onLogin }: { onLogin: (operator: Operator) => void }) {
             <Radio className="size-8 text-white animate-pulse" />
           </div>
           <CardTitle className="font-headline text-3xl font-bold tracking-tight bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent mb-2">
-            NovaPulse Command
+            NovaPulse Cluster
           </CardTitle>
           <CardDescription className="text-muted-foreground/80">
-            Enterprise Real-Time Notification Backbone
+            Real-Time Notification Backbone Access
           </CardDescription>
         </CardHeader>
         
@@ -324,15 +323,15 @@ function AuthScreen({ onLogin }: { onLogin: (operator: Operator) => void }) {
             <div className="relative">
               <Key className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
               <Input 
-                placeholder="Enter Operator ID (e.g. ROOT-01)" 
-                className="pl-10 h-12 bg-white/5 border-white/10 text-center font-code"
+                placeholder="OPERATOR-ID" 
+                className="pl-10 h-12 bg-white/5 border-white/10 text-center font-code tracking-widest"
                 value={operatorId}
                 onChange={(e) => setOperatorId(e.target.value.toUpperCase())}
                 onKeyDown={(e) => e.key === 'Enter' && handleAccess()}
               />
             </div>
             <p className="text-[10px] text-center text-muted-foreground/60 italic">
-              Hint: Use ROOT-01, NAV-02, or GUEST-99
+              Registry keys: ROOT-01, NAV-02, GUEST-99
             </p>
           </div>
 
@@ -346,7 +345,7 @@ function AuthScreen({ onLogin }: { onLogin: (operator: Operator) => void }) {
             ) : (
               <div className="flex items-center gap-3">
                 <Power className="size-5" />
-                Establish Link
+                Open Socket
                 <ChevronRight className="size-5" />
               </div>
             )}
@@ -355,7 +354,7 @@ function AuthScreen({ onLogin }: { onLogin: (operator: Operator) => void }) {
 
         <div className="px-6 py-4 border-t border-white/5 text-center">
           <p className="text-[10px] text-muted-foreground/40 uppercase tracking-[0.2em] font-code">
-            Secure Backbone Access v2.7.0
+            Secured Real-Time Subsystem
           </p>
         </div>
       </Card>
