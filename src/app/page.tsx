@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useEffect } from 'react';
@@ -19,7 +18,8 @@ import {
   Server,
   Users,
   LogOut,
-  Lock
+  Lock,
+  UserCircle
 } from 'lucide-react';
 import { Sidebar, SidebarContent, SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarGroup, SidebarGroupLabel, SidebarInset, SidebarTrigger, SidebarFooter } from '@/components/ui/sidebar';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -32,7 +32,7 @@ import { LiveStream } from '@/components/dashboard/live-stream';
 import { HealthMetrics } from '@/components/dashboard/health-metrics';
 import { TopicManager } from '@/components/dashboard/topic-manager';
 import { useUser, useFirestore } from '@/firebase';
-import { signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut } from 'firebase/auth';
+import { signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, signInAnonymously } from 'firebase/auth';
 import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { useAuth } from '@/firebase/provider';
 
@@ -50,11 +50,12 @@ export default function NovaPulseDashboard() {
     const userRef = doc(db, 'users', user.uid);
     const updatePresence = (status: 'online' | 'offline' | 'away') => {
       setDoc(userRef, {
-        email: user.email,
-        displayName: user.displayName || 'Anonymous Operator',
+        email: user.email || 'guest@novapulse.io',
+        displayName: user.displayName || (user.isAnonymous ? 'Guest Operator' : 'Anonymous Operator'),
         status: status,
         lastActive: new Date().toISOString(),
-        role: 'operator'
+        role: user.isAnonymous ? 'viewer' : 'operator',
+        isGuest: user.isAnonymous
       }, { merge: true });
     };
 
@@ -156,8 +157,8 @@ export default function NovaPulseDashboard() {
                 <Users className="size-4 text-muted-foreground" />
               </div>
               <div className="flex flex-col">
-                <span className="text-[10px] font-bold truncate max-w-[100px]">{user.email}</span>
-                <span className="text-[9px] text-primary">Operator</span>
+                <span className="text-[10px] font-bold truncate max-w-[100px]">{user.email || 'Guest Session'}</span>
+                <span className="text-[9px] text-primary">{user.isAnonymous ? 'Guest' : 'Operator'}</span>
               </div>
             </div>
             <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-destructive" onClick={() => signOut(auth)}>
@@ -269,10 +270,12 @@ function AuthScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isRegistering, setIsRegistering] = useState(false);
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
   const { auth } = useAuth();
 
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
+    setIsLoggingIn(true);
     try {
       if (isRegistering) {
         await createUserWithEmailAndPassword(auth, email, password);
@@ -281,6 +284,19 @@ function AuthScreen() {
       }
     } catch (err: any) {
       alert(err.message);
+    } finally {
+      setIsLoggingIn(false);
+    }
+  };
+
+  const handleGuestLogin = async () => {
+    setIsLoggingIn(true);
+    try {
+      await signInAnonymously(auth);
+    } catch (err: any) {
+      alert(err.message);
+    } finally {
+      setIsLoggingIn(false);
     }
   };
 
@@ -299,7 +315,7 @@ function AuthScreen() {
           </CardTitle>
           <CardDescription>Enter credentials to access the enterprise gateway.</CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-6">
           <form onSubmit={handleAuth} className="space-y-4">
             <div className="space-y-2">
               <label className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold">Terminal ID (Email)</label>
@@ -309,6 +325,7 @@ function AuthScreen() {
                 className="bg-secondary/20 border-border/40"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
+                required
               />
             </div>
             <div className="space-y-2">
@@ -319,12 +336,32 @@ function AuthScreen() {
                 className="bg-secondary/20 border-border/40"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
+                required
               />
             </div>
-            <Button type="submit" className="w-full font-headline font-bold">
-              {isRegistering ? 'Register Node' : 'Initialize Session'}
+            <Button type="submit" className="w-full font-headline font-bold" disabled={isLoggingIn}>
+              {isLoggingIn ? 'Processing...' : isRegistering ? 'Register Node' : 'Initialize Session'}
             </Button>
           </form>
+
+          <div className="relative">
+            <div className="absolute inset-0 flex items-center">
+              <span className="w-full border-t border-border/40" />
+            </div>
+            <div className="relative flex justify-center text-[10px] uppercase tracking-widest">
+              <span className="bg-[#161b22] px-2 text-muted-foreground">Or bypass protocols</span>
+            </div>
+          </div>
+
+          <Button 
+            variant="outline" 
+            className="w-full border-primary/20 hover:bg-primary/5 text-primary gap-2"
+            onClick={handleGuestLogin}
+            disabled={isLoggingIn}
+          >
+            <UserCircle className="size-4" />
+            Initialize Guest Session
+          </Button>
         </CardContent>
         <div className="px-6 pb-6 text-center">
           <button 
