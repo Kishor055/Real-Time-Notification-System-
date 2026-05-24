@@ -1,3 +1,22 @@
 {
-  "placeholderImages": []
+  "placeholderImages": [
+    {
+      "id": "hero-bg",
+      "description": "Abstract futuristic data stream background",
+      "imageUrl": "https://picsum.photos/seed/nova-pulse-bg/1200/800",
+      "imageHint": "cyberpunk data"
+    },
+    {
+      "id": "server-rack",
+      "description": "Close up of a server room with blue LEDs",
+      "imageUrl": "https://picsum.photos/seed/nova-server/600/400",
+      "imageHint": "server datacenter"
+    },
+    {
+      "id": "network-nodes",
+      "description": "Abstract network connection nodes",
+      "imageUrl": "https://picsum.photos/seed/nova-nodes/600/400",
+      "imageHint": "network technology"
+    }
+  ]
 }
